@@ -9,14 +9,13 @@ local unpredicted = CreateConVar("sv_lean_unpredicted", 0, flags, "Restores some
 local debugmode = CreateConVar("sv_lean_debug", 0, flags, "a buncha shit")
 local notify = CreateConVar("sv_lean_notify", 0, flags, "a buncha shit")
 
-local reasonable_crouch_offset = CreateConVar("sv_lean_reasonable_crouch_offset", 1, flags)
-local reasonable_crouch_offset_mult = CreateConVar("sv_lean_reasonable_crouch_offset_mult", 1, flags)
-
 local hull_size_4 = Vector(4, 4, 4)
 local hull_size_5 = Vector(5, 5, 5)
 
 local hull_size_4_negative = Vector(-4, -4, -4)
 local hull_size_5_negative = Vector(-5, -5, -5)
+
+local SP = game.SinglePlayer()
 
 local binds = {
     {"_cl_lean_right_key_hold", "Lean Right (Hold)", "leaning_right", "hold"},
@@ -46,6 +45,9 @@ hook.Add("PlayerButtonDown", "leaning_keys", function(ply, button)
         local need_to_press = ply:GetInfoNum(info_name, -1)
 
         if button == need_to_press then
+            ply.pressed_button = true
+            if SP then ply:SendLua("LocalPlayer().pressed_button = true") end
+
             if typee == "hold" then
                 ply:SetNW2Var(network_name, true)
                 if notify:GetBool() then ply:ChatPrint("[Leaning] Enabled "..pretty_name) end
@@ -56,8 +58,8 @@ hook.Add("PlayerButtonDown", "leaning_keys", function(ply, button)
                 ply:SetNW2Var(network_name, state)
 
                 if notify:GetBool() then ply:ChatPrint("[Leaning] Toggled "..pretty_name..": "..bool_to_str(state)) end
-                
-                for j, j_data in ipairs(binds) do 
+
+                for j, j_data in ipairs(binds) do
                     if j_data[4] == "toggle" and network_name != j_data[3] then
                         ply:SetNW2Var(j_data[3], false)
                     end
@@ -83,14 +85,6 @@ hook.Add("PlayerButtonUp", "leaning_keys", function(ply, button)
             end
         end
     end
-end)
-
-hook.Add("PlayerAuthed", "leaning_duck_offset", function(ply, ...)
-    if not reasonable_crouch_offset then return end
-
-    local offset = ply:GetViewOffsetDucked()
-    offset.z = offset.z * 1.5 * reasonable_crouch_offset_mult:GetFloat()
-    ply:SetViewOffsetDucked(offset)
 end)
 
 hook.Add("SetupMove", "leaning_main", function(ply, mv, cmd)
@@ -122,7 +116,7 @@ hook.Add("SetupMove", "leaning_main", function(ply, mv, cmd)
         elseif cmd:KeyDown(IN_MOVERIGHT) then
             fraction = Lerp(FrameTime() * 3 * ron_lean_speed:GetFloat() * math.abs(fraction + 1) + FrameTime(), fraction, 1)
         end
-        
+
         cmd:SetForwardMove(0)
         cmd:SetSideMove(0)
         mv:SetSideSpeed(0)
@@ -136,10 +130,10 @@ hook.Add("SetupMove", "leaning_main", function(ply, mv, cmd)
 
     if leaning_auto then
         local wish_fraction = 0
-        
+
         local angles_right = angles:Right()
         local angles_forward = angles:Forward()
-        
+
         local sanity = util.TraceHull({
             start = eyepos,
             endpos = eyepos + angles_forward * lean_amount:GetFloat(),
@@ -163,7 +157,7 @@ hook.Add("SetupMove", "leaning_main", function(ply, mv, cmd)
                 mask = MASK_BLOCKLOS,
                 filter = ply
             })
-            
+
             local left_forward = util.TraceLine({
                 start = left.HitPos,
                 endpos = left.HitPos + angles_forward * lean_amount:GetFloat() * 2,
@@ -185,7 +179,7 @@ hook.Add("SetupMove", "leaning_main", function(ply, mv, cmd)
                     mask = MASK_BLOCKLOS,
                     filter = ply
                 })
-        
+
                 local right_forward = util.TraceLine({
                     start = right.HitPos,
                     endpos = right.HitPos + angles_forward * 10000,
@@ -218,7 +212,7 @@ hook.Add("SetupMove", "leaning_main", function(ply, mv, cmd)
         else
             wish_fraction = 0
         end
-        
+
         fraction = Lerp(FrameTime() * 5 * general_lean_speed:GetFloat() + FrameTime(), fraction, wish_fraction)
     end
 
@@ -244,11 +238,11 @@ hook.Add("SetupMove", "leaning_main", function(ply, mv, cmd)
     local offsetang = Angle(angles:Unpack())
     offsetang.x = 0
     offsetang:RotateAroundAxis(offsetang:Forward(), amount)
-    
+
     local offset = Vector(0, -amount, 0)
     offset:Rotate(offsetang)
-    
-    if math.abs(fraction_smooth) >= 0.0001 then        
+
+    if math.abs(fraction_smooth) >= 0.0001 then
         local tr = util.TraceHull({
             start = eyepos,
             endpos = eyepos + offset,
@@ -264,7 +258,7 @@ hook.Add("SetupMove", "leaning_main", function(ply, mv, cmd)
         ply:SetNW2Vector("leaning_best_head_offset", best_offset)
 
         local delta = ply:GetNW2Vector("leaning_best_head_offset") - ply:GetNW2Vector("leaning_best_head_offset_last")
-        
+
         if unpredicted:GetBool() then
             ply:SetCurrentViewOffset(ply:GetCurrentViewOffset() + delta)
             ply:SetViewOffset(ply:GetViewOffset() + delta)
@@ -287,22 +281,38 @@ local function angle_offset(new, old)
 end
 
 local function lean_bones(ply, roll)
-    for _, bone_name in ipairs({"ValveBiped.Bip01_Spine", "ValveBiped.Bip01_Spine1"}) do
+    if CLIENT then ply:SetupBones() end
+
+    if not ply.pressed_button then return end
+
+    for _, bone_name in ipairs({"ValveBiped.Bip01_Spine", "ValveBiped.Bip01_Spine1", "ValveBiped.Bip01_Head1"}) do
         local bone = ply:LookupBone(bone_name)
+
         if not bone then continue end
 
         local ang
         local old_ang
+
         local matrix = ply:GetBoneMatrix(bone)
+
         if IsValid(matrix) then
             ang = matrix:GetAngles()
-            old_ang = Angle(ang:Unpack())
+            old_ang = matrix:GetAngles()
         else
             _, ang = ply:GetBonePosition(bone)
-            old_ang = Angle(ang:Unpack())
+            _, old_ang = ply:GetBonePosition(bone)
         end
-        
-        ang:RotateAroundAxis(ply:EyeAngles():Forward(), roll)
+
+        if bone_name != "ValveBiped.Bip01_Head1" then
+            local eyeangles = ply:EyeAngles()
+            eyeangles.x = 0
+            local forward = eyeangles:Forward()
+            ang:RotateAroundAxis(forward, roll)
+        else
+            local eyeangles = ply:EyeAngles()
+            local forward = eyeangles:Forward()
+            ang:RotateAroundAxis(forward, -roll)
+        end
 
         ang = angle_offset(ang, old_ang)
 
@@ -311,7 +321,7 @@ local function lean_bones(ply, roll)
 end
 
 if SERVER then
-    hook.Add("Think", "leaning_bend", function() 
+    hook.Add("Think", "leaning_bend", function()
         for k, ply in ipairs(player.GetAll()) do
             local absolute = math.abs(ply:GetNW2Float("leaning_fraction_smooth"))
 
@@ -331,37 +341,37 @@ if SERVER then
 
     hook.Add("Think", "draw_hitboxes", function()
         if not debugmode:GetBool() then return end
-        
+
         for _, ent in pairs(ents.GetAll()) do
             if ent:GetHitboxSetCount() == nil then continue end
             if not ent:IsPlayer() then continue end
-        
+
             local breaking_lag_comp = false
-        
+
             ent.prev_pos = ent.current_pos or vector_origin
             ent.current_pos = ent:GetPos()
-        
+
             if (ent.current_pos - ent.prev_pos):Length2DSqr() > 64 * 64 then
                 breaking_lag_comp = true
             end
-        
+
             for group=0, ent:GetHitboxSetCount() - 1 do
-                    for hitbox=0, ent:GetHitBoxCount( group ) - 1 do 
+                    for hitbox=0, ent:GetHitBoxCount( group ) - 1 do
                     local matrix = ent:GetBoneMatrix(ent:GetHitBoxBone(hitbox, group))
                     local pos = matrix:GetTranslation()
                     local ang = matrix:GetAngles()
                     local mins, maxs = ent:GetHitBoxBounds(hitbox, group)
-                
+
                     local color = Color(26, 102, 202)
-                
+
                     if breaking_lag_comp then
                         color = Color(50, 0, 50, 255)
                     end
-                
+
                     debugoverlay.SweptBox(pos, pos, mins, maxs, ang, engine.TickInterval() * 3, color)
                 end
             end
-        
+
             debugoverlay.SweptBox(ent:EyePos(), ent:EyePos(), hull_size_4_negative, hull_size_4, angle_zero, engine.TickInterval() * 3, Color(146, 90, 26))
         end
     end)
@@ -377,7 +387,7 @@ if CLIENT then
             ply.leaning_fraction_true_smooth = Lerp(FrameTime() / (engine.TickInterval() * interp:GetInt()), ply.leaning_fraction_true_smooth or 0, ply:GetNW2Float("leaning_fraction_smooth") * lean_amount:GetFloat())
             local absolute = math.abs(ply.leaning_fraction_true_smooth)
 
-            if absolute <= 0.001 then ply.leaning_fraction_true_smooth = 0 end
+            if absolute <= 0.00001 then ply.leaning_fraction_true_smooth = 0 end
 
             if absolute > 0 then
                 ply.stop_leaning_bones = false
@@ -395,11 +405,17 @@ if CLIENT then
 
     local lerped_fraction = 0
 
+    local last_realtime = 0
+    local realtime = 0
+
     hook.Add("CalcView", "leaning_roll", function(ply, origin, angles, fov, znear, zfar)
         lerped_fraction = Lerp(FrameTime() / (engine.TickInterval() * interp:GetInt()), lerped_fraction, ply:GetNW2Float("leaning_fraction_smooth", 0) * lean_amount:GetFloat() * 0.5)
 
         angles.z = angles.z + lerped_fraction
     end)
+
+    local vm_last_realtime = 0
+    local vm_realtime = 0
 
     hook.Add("CalcViewModelView", "leaning_roll", function(wep, vm, oldpos, oldang, pos, ang)
         if string.StartsWith(wep:GetClass(), "mg_") then return end
@@ -407,7 +423,7 @@ if CLIENT then
         ang.z = ang.z + lerped_fraction
     end)
 
-    concommand.Add("cl_lean_bind", function(ply, cmd, args, argstr) 
+    concommand.Add("cl_lean_bind", function(ply, cmd, args, argstr)
         local scrw = ScrW()
         local scrh = ScrH()
         local ww = scrw / 8
@@ -416,10 +432,10 @@ if CLIENT then
         local m = 5
 
         local frame = vgui.Create("DFrame")
-        frame:SetTitle("Leaning Controls") 
-        frame:SetPos(scrw / 2 - ww / 2, scrh / 2 - wh / 2) 
+        frame:SetTitle("Leaning Controls")
+        frame:SetPos(scrw / 2 - ww / 2, scrh / 2 - wh / 2)
         frame:SetSize(ww, wh)
-        frame:SetVisible(true) 
+        frame:SetVisible(true)
         frame:SetDraggable(true)
         frame:SetSizable(true)
         frame:ShowCloseButton(true)
@@ -431,25 +447,25 @@ if CLIENT then
         l:SetColor(color_white)
         l:SetWrap(true)
         l:SetAutoStretchVertical(true)
-        l:SetText("Press backspace to disable the bind.")     
-        
+        l:SetText("Press backspace to disable the bind.")
+
         local ltwo = vgui.Create("DLabel", frame)
         ltwo:Dock(TOP)
         ltwo:DockMargin(m, 0, m, m * 2)
         ltwo:SetColor(color_white)
         ltwo:SetWrap(true)
         ltwo:SetAutoStretchVertical(true)
-        ltwo:SetText("This wont automatically handle bind collisions, so be aware.")  
+        ltwo:SetText("This wont automatically handle bind collisions, so be aware.")
 
         local scroll = vgui.Create("DScrollPanel", frame)
         scroll:Dock(FILL)
 
-        for i, data in ipairs(binds) do 
+        for i, data in ipairs(binds) do
             local binder = vgui.Create("DBinder", scroll)
 
             local convar_name = data[1]
             local convar = GetConVar(convar_name)
-            
+
             local bw = ww - 10
             local bh = 30
             local bpx = bw / 4
@@ -478,7 +494,7 @@ if CLIENT then
             l:Dock(TOP)
             l:DockMargin(m, m / 8, m, m * 5)
             l:SetColor(color_white)
-            l:SetText(data[2])            
+            l:SetText(data[2])
         end
     end)
 end
