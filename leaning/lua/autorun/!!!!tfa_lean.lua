@@ -488,6 +488,12 @@ if CLIENT then
         sights:SetText("Toggle autolean when aiming weapon.")
 
         for i, data in ipairs(binds) do
+            local l = vgui.Create("DLabel", scroll)
+            l:Dock(TOP)
+            l:DockMargin(m, m / 8, m, m)
+            l:SetColor(color_white)
+            l:SetText(data[2])
+            
             local binder = vgui.Create("DBinder", scroll)
 
             local convar_name = data[1]
@@ -516,12 +522,6 @@ if CLIENT then
                     LocalPlayer():ChatPrint("New bound key: "..input.GetKeyName(num).." "..convar_name)
                 end
             end
-
-            local l = vgui.Create("DLabel", scroll)
-            l:Dock(TOP)
-            l:DockMargin(m, m / 8, m, m * 5)
-            l:SetColor(color_white)
-            l:SetText(data[2])
         end
     end)
 end
