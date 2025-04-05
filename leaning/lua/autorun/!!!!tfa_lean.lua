@@ -87,16 +87,27 @@ hook.Add("PlayerButtonUp", "leaning_keys", function(ply, button)
     end
 end)
 
+local function can_lean(ply)
+    if !ply:OnGround() then return false end -- no leans in air
+    if ply:IsSprinting() and ply:KeyDown(IN_FORWARD + IN_BACK + IN_MOVELEFT + IN_MOVERIGHT) then return false end -- no leans while sprint, checking if ply is actually moving
+    if ply.GetSliding and ply:GetSliding() then return false end -- sliding mods support
+    local wep = ply:GetActiveWeapon()
+    if wep and !wep.CanLean then return false end -- arc9 has this on some guns, some other mods could add this too
+    return true
+end
+
 hook.Add("SetupMove", "leaning_main", function(ply, mv, cmd)
     local eyepos = ply:EyePos() - ply:GetNW2Vector("leaning_best_head_offset")
     local angles = cmd:GetViewAngles()
 
+    local canlean = can_lean(ply)
+
     local fraction = ply:GetNW2Float("leaning_fraction", 0)
 
-    local leaning_left = ply:GetNW2Bool("leaning_left")
-    local leaning_right = ply:GetNW2Bool("leaning_right")
-    local leaning_ron = ply:GetNW2Bool("leaning_ron")
     local leaning_auto = ply:GetNW2Bool("leaning_auto")
+    local leaning_left = ply:GetNW2Bool("leaning_left") and canlean
+    local leaning_right = ply:GetNW2Bool("leaning_right") and canlean
+    local leaning_ron = ply:GetNW2Bool("leaning_ron") and canlean
 
     if debugmode:GetBool() then
         debugoverlay.ScreenText(0.2, 0.2, "leaning_left: "..bool_to_str(leaning_left).." | leaning_right: "..bool_to_str(leaning_right).." | leaning_ron: "..bool_to_str(leaning_ron).." | leaning_auto: "..bool_to_str(leaning_auto), FrameTime() * 5, color_white)
