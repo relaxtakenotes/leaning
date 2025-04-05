@@ -8,6 +8,7 @@ local interp = CreateConVar("cl_lean_interp_ratio", 2, flags, nil, 1)
 local unpredicted = CreateConVar("sv_lean_unpredicted", 0, flags, "Restores some compatibility with mods that also alter the view offset.")
 local debugmode = CreateConVar("sv_lean_debug", 0, flags, "a buncha shit")
 local notify = CreateConVar("sv_lean_notify", 0, flags, "a buncha shit")
+local allow_crouch_leans = CreateConVar("sv_lean_allowcrouch", 1, flags)
 
 local hull_size_4 = Vector(4, 4, 4)
 local hull_size_5 = Vector(5, 5, 5)
@@ -91,6 +92,7 @@ local function can_lean(ply)
     if !ply:OnGround() then return false end -- no leans in air
     if ply:IsSprinting() and ply:KeyDown(IN_FORWARD + IN_BACK + IN_MOVELEFT + IN_MOVERIGHT) then return false end -- no leans while sprint, checking if ply is actually moving
     if ply.GetSliding and ply:GetSliding() then return false end -- sliding mods support
+    if !allow_crouch_leans:GetBool() and ply:Crouching() then return false end
     local wep = ply:GetActiveWeapon()
     if wep and !wep.CanLean then return false end -- arc9 has this on some guns, some other mods could add this too
     return true
