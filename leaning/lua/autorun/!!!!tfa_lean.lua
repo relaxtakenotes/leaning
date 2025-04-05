@@ -9,6 +9,7 @@ local unpredicted = CreateConVar("sv_lean_unpredicted", 0, flags, "Restores some
 local debugmode = CreateConVar("sv_lean_debug", 0, flags, "a buncha shit")
 local notify = CreateConVar("sv_lean_notify", 0, flags, "a buncha shit")
 local allow_crouch_leans = CreateConVar("sv_lean_allowcrouch", 1, flags)
+local auto_in_sights = CreateConVar("sv_lean_auto_insights", 1, flags)
 
 local hull_size_4 = Vector(4, 4, 4)
 local hull_size_5 = Vector(5, 5, 5)
@@ -34,6 +35,12 @@ local binds = {
 
 local function bool_to_str(bool)
     if bool then return "On" else return "Off" end
+end
+
+local function get_in_sights(ply) -- arccw, arc9, tfa, mgbase, fas2 works
+    if !auto_in_sights:GetBool() then return false end
+    local weapon = ply:GetActiveWeapon()
+    return ply:KeyDown(IN_ATTACK2) or (weapon.GetInSights and weapon:GetInSights()) or (weapon.ArcCW and weapon:GetState() == ArcCW.STATE_SIGHTS) or (weapon.GetIronSights and weapon:GetIronSights())
 end
 
 hook.Add("PlayerButtonDown", "leaning_keys", function(ply, button)
@@ -106,10 +113,10 @@ hook.Add("SetupMove", "leaning_main", function(ply, mv, cmd)
 
     local fraction = ply:GetNW2Float("leaning_fraction", 0)
 
-    local leaning_auto = ply:GetNW2Bool("leaning_auto")
     local leaning_left = ply:GetNW2Bool("leaning_left") and canlean
     local leaning_right = ply:GetNW2Bool("leaning_right") and canlean
     local leaning_ron = ply:GetNW2Bool("leaning_ron") and canlean
+    local leaning_auto = (ply:GetNW2Bool("leaning_auto") or get_in_sights(ply)) and canlean
 
     if debugmode:GetBool() then
         debugoverlay.ScreenText(0.2, 0.2, "leaning_left: "..bool_to_str(leaning_left).." | leaning_right: "..bool_to_str(leaning_right).." | leaning_ron: "..bool_to_str(leaning_ron).." | leaning_auto: "..bool_to_str(leaning_auto), FrameTime() * 5, color_white)
@@ -472,6 +479,13 @@ if CLIENT then
 
         local scroll = vgui.Create("DScrollPanel", frame)
         scroll:Dock(FILL)
+
+        local sights = vgui.Create("DCheckBoxLabel", scroll)
+        sights:Dock(TOP)
+        sights:DockMargin(m, m, m, m*3)
+        sights:SetValue(auto_in_sights:GetBool())
+        sights:SetConVar("sv_lean_auto_insights")
+        sights:SetText("Toggle autolean when aiming weapon.")
 
         for i, data in ipairs(binds) do
             local binder = vgui.Create("DBinder", scroll)
