@@ -4,12 +4,13 @@ local concommand_flags = {FCVAR_CLIENTCMD_CAN_EXECUTE}
 local lean_amount = CreateConVar("sv_lean_amount", 16, flags)
 local ron_lean_speed = CreateConVar("sv_lean_speed_ron", 1, flags)
 local general_lean_speed = CreateConVar("sv_lean_speed_general", 1, flags)
-local interp = CreateConVar("cl_lean_interp_ratio", 2, flags, nil, 1)
 local unpredicted = CreateConVar("sv_lean_unpredicted", 0, flags, "Restores some compatibility with mods that also alter the view offset.")
 local debugmode = CreateConVar("sv_lean_debug", 0, flags, "a buncha shit")
 local notify = CreateConVar("sv_lean_notify", 0, flags, "a buncha shit")
 local allow_crouch_leans = CreateConVar("sv_lean_allowcrouch", 1, flags)
-local auto_in_sights = CreateConVar("sv_lean_auto_insights", 1, flags)
+local always_allow_leaning = CreateConVar("sv_lean_always_allow_leaning", 0, flags)
+local auto_in_sights = CreateConVar("cl_lean_auto_insights", 0, 1)
+local interp = CreateConVar("cl_lean_interp_ratio", 2, flags, nil, 1)
 
 local hull_size_4 = Vector(4, 4, 4)
 local hull_size_5 = Vector(5, 5, 5)
@@ -101,7 +102,7 @@ local function can_lean(ply)
     if ply.GetSliding and ply:GetSliding() then return false end -- sliding mods support
     if !allow_crouch_leans:GetBool() and ply:Crouching() then return false end
     local wep = ply:GetActiveWeapon()
-    if wep and !wep.CanLean then return false end -- arc9 has this on some guns, some other mods could add this too
+    if wep and wep.CanLean == false then return false end -- arc9 has this on some guns, some other mods could add this too
     return true
 end
 
@@ -109,14 +110,15 @@ hook.Add("SetupMove", "leaning_main", function(ply, mv, cmd)
     local eyepos = ply:EyePos() - ply:GetNW2Vector("leaning_best_head_offset")
     local angles = cmd:GetViewAngles()
 
-    local canlean = can_lean(ply)
+    local canlean = always_allow_leaning:GetBool() or can_lean(ply)
 
     local fraction = ply:GetNW2Float("leaning_fraction", 0)
 
     local leaning_left = ply:GetNW2Bool("leaning_left") and canlean
     local leaning_right = ply:GetNW2Bool("leaning_right") and canlean
     local leaning_ron = ply:GetNW2Bool("leaning_ron") and canlean
-    local leaning_auto = (ply:GetNW2Bool("leaning_auto") or get_in_sights(ply)) and canlean
+
+    local leaning_auto = not (leaning_left or leaning_right or leaning_ron) and (ply:GetNW2Bool("leaning_auto") or get_in_sights(ply)) and canlean
 
     if debugmode:GetBool() then
         debugoverlay.ScreenText(0.2, 0.2, "leaning_left: "..bool_to_str(leaning_left).." | leaning_right: "..bool_to_str(leaning_right).." | leaning_ron: "..bool_to_str(leaning_ron).." | leaning_auto: "..bool_to_str(leaning_auto), FrameTime() * 5, color_white)
@@ -303,7 +305,9 @@ end
 local function lean_bones(ply, roll)
     if CLIENT then ply:SetupBones() end
 
-    if not ply.pressed_button then return end
+    if not ply.pressed_button then
+        return 
+    end
 
     for _, bone_name in ipairs({"ValveBiped.Bip01_Spine", "ValveBiped.Bip01_Spine1", "ValveBiped.Bip01_Head1"}) do
         local bone = ply:LookupBone(bone_name)
@@ -484,13 +488,14 @@ if CLIENT then
         sights:Dock(TOP)
         sights:DockMargin(m, m, m, m*3)
         sights:SetValue(auto_in_sights:GetBool())
-        sights:SetConVar("sv_lean_auto_insights")
-        sights:SetText("Toggle autolean when aiming weapon.")
+        sights:SetConVar("cl_lean_auto_insights")
+        sights:SetText("Auto Lean In Sights")
+        sights:SetWrap(true)
 
         for i, data in ipairs(binds) do
             local l = vgui.Create("DLabel", scroll)
             l:Dock(TOP)
-            l:DockMargin(m, m / 8, m, m)
+            l:DockMargin(m, m, m, 0)
             l:SetColor(color_white)
             l:SetText(data[2])
             
