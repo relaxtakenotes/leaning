@@ -8,6 +8,8 @@ local interp = CreateConVar("cl_lean_interp_ratio", 2, flags, nil, 1)
 local unpredicted = CreateConVar("sv_lean_unpredicted", 0, flags, "Restores some compatibility with mods that also alter the view offset.")
 local debugmode = CreateConVar("sv_lean_debug", 0, flags, "a buncha shit")
 local notify = CreateConVar("sv_lean_notify", 0, flags, "a buncha shit")
+local allow_crouch_leans = CreateConVar("sv_lean_allowcrouch", 1, flags)
+local auto_in_sights = CreateConVar("sv_lean_auto_insights", 1, flags)
 
 local hull_size_4 = Vector(4, 4, 4)
 local hull_size_5 = Vector(5, 5, 5)
@@ -33,6 +35,12 @@ local binds = {
 
 local function bool_to_str(bool)
     if bool then return "On" else return "Off" end
+end
+
+local function get_in_sights(ply) -- arccw, arc9, tfa, mgbase, fas2 works
+    if !auto_in_sights:GetBool() then return false end
+    local weapon = ply:GetActiveWeapon()
+    return ply:KeyDown(IN_ATTACK2) or (weapon.GetInSights and weapon:GetInSights()) or (weapon.ArcCW and weapon:GetState() == ArcCW.STATE_SIGHTS) or (weapon.GetIronSights and weapon:GetIronSights())
 end
 
 hook.Add("PlayerButtonDown", "leaning_keys", function(ply, button)
@@ -87,16 +95,28 @@ hook.Add("PlayerButtonUp", "leaning_keys", function(ply, button)
     end
 end)
 
+local function can_lean(ply)
+    if !ply:OnGround() then return false end -- no leans in air
+    if ply:IsSprinting() and ply:KeyDown(IN_FORWARD + IN_BACK + IN_MOVELEFT + IN_MOVERIGHT) then return false end -- no leans while sprint, checking if ply is actually moving
+    if ply.GetSliding and ply:GetSliding() then return false end -- sliding mods support
+    if !allow_crouch_leans:GetBool() and ply:Crouching() then return false end
+    local wep = ply:GetActiveWeapon()
+    if wep and !wep.CanLean then return false end -- arc9 has this on some guns, some other mods could add this too
+    return true
+end
+
 hook.Add("SetupMove", "leaning_main", function(ply, mv, cmd)
     local eyepos = ply:EyePos() - ply:GetNW2Vector("leaning_best_head_offset")
     local angles = cmd:GetViewAngles()
 
+    local canlean = can_lean(ply)
+
     local fraction = ply:GetNW2Float("leaning_fraction", 0)
 
-    local leaning_left = ply:GetNW2Bool("leaning_left")
-    local leaning_right = ply:GetNW2Bool("leaning_right")
-    local leaning_ron = ply:GetNW2Bool("leaning_ron")
-    local leaning_auto = ply:GetNW2Bool("leaning_auto")
+    local leaning_left = ply:GetNW2Bool("leaning_left") and canlean
+    local leaning_right = ply:GetNW2Bool("leaning_right") and canlean
+    local leaning_ron = ply:GetNW2Bool("leaning_ron") and canlean
+    local leaning_auto = (ply:GetNW2Bool("leaning_auto") or get_in_sights(ply)) and canlean
 
     if debugmode:GetBool() then
         debugoverlay.ScreenText(0.2, 0.2, "leaning_left: "..bool_to_str(leaning_left).." | leaning_right: "..bool_to_str(leaning_right).." | leaning_ron: "..bool_to_str(leaning_ron).." | leaning_auto: "..bool_to_str(leaning_auto), FrameTime() * 5, color_white)
@@ -460,7 +480,20 @@ if CLIENT then
         local scroll = vgui.Create("DScrollPanel", frame)
         scroll:Dock(FILL)
 
+        local sights = vgui.Create("DCheckBoxLabel", scroll)
+        sights:Dock(TOP)
+        sights:DockMargin(m, m, m, m*3)
+        sights:SetValue(auto_in_sights:GetBool())
+        sights:SetConVar("sv_lean_auto_insights")
+        sights:SetText("Toggle autolean when aiming weapon.")
+
         for i, data in ipairs(binds) do
+            local l = vgui.Create("DLabel", scroll)
+            l:Dock(TOP)
+            l:DockMargin(m, m / 8, m, m)
+            l:SetColor(color_white)
+            l:SetText(data[2])
+            
             local binder = vgui.Create("DBinder", scroll)
 
             local convar_name = data[1]
@@ -489,12 +522,6 @@ if CLIENT then
                     LocalPlayer():ChatPrint("New bound key: "..input.GetKeyName(num).." "..convar_name)
                 end
             end
-
-            local l = vgui.Create("DLabel", scroll)
-            l:Dock(TOP)
-            l:DockMargin(m, m / 8, m, m * 5)
-            l:SetColor(color_white)
-            l:SetText(data[2])
         end
     end)
 end
