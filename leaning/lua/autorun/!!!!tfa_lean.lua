@@ -406,6 +406,8 @@ if CLIENT then
         CreateConVar(data[1], -1, {FCVAR_USERINFO, FCVAR_ARCHIVE})
     end
 
+    local lerped_fraction = 0
+
     hook.Add("PreRender", "leaning_bend", function()
         for k, ply in ipairs(player.GetAll()) do
             ply.leaning_fraction_true_smooth = Lerp(FrameTime() / (engine.TickInterval() * interp:GetInt()), ply.leaning_fraction_true_smooth or 0, ply:GetNW2Float("leaning_fraction_smooth") * lean_amount:GetFloat())
@@ -421,30 +423,28 @@ if CLIENT then
 
             lean_bones(ply, ply.leaning_fraction_true_smooth)
 
+            if ply == LocalPlayer() then
+                local eyes = ply:EyeAngles()
+                eyes.z = ply.leaning_fraction_true_smooth * 0.5
+                ply:SetEyeAngles(eyes)
+            end
+
             if absolute == 0 then
                 ply.stop_leaning_bones = true
             end
         end
     end)
 
-    local lerped_fraction = 0
-
-    local last_realtime = 0
-    local realtime = 0
-
-    hook.Add("CalcView", "leaning_roll", function(ply, origin, angles, fov, znear, zfar)
-        lerped_fraction = Lerp(FrameTime() / (engine.TickInterval() * interp:GetInt()), lerped_fraction, ply:GetNW2Float("leaning_fraction_smooth", 0) * lean_amount:GetFloat() * 0.5)
-
-        angles.z = angles.z + lerped_fraction
-    end)
-
-    local vm_last_realtime = 0
-    local vm_realtime = 0
+    local cl_ehw_override = GetConVar("cl_ehw_override")
 
     hook.Add("CalcViewModelView", "leaning_roll", function(wep, vm, oldpos, oldang, pos, ang)
         if string.StartsWith(wep:GetClass(), "mg_") then return end
 
         ang.z = ang.z + lerped_fraction
+
+        if (cl_ehw_override and cl_ehw_override:GetBool()) then
+            oldang.z = oldang.z + lerped_fraction
+        end
     end)
 
     concommand.Add("cl_lean_bind", function(ply, cmd, args, argstr)
