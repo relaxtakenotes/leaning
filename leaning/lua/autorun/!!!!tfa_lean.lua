@@ -20,6 +20,8 @@ local hull_size_5_negative = Vector(-5, -5, -5)
 
 local SP = game.SinglePlayer()
 
+local halt_leaning = true
+
 local binds = {
     {"_cl_lean_right_key_hold", "Lean Right (Hold)", "leaning_right", "hold"},
     {"_cl_lean_left_key_hold", "Lean Left (Hold)", "leaning_left", "hold"},
@@ -54,9 +56,6 @@ hook.Add("PlayerButtonDown", "leaning_keys", function(ply, button)
         local need_to_press = ply:GetInfoNum(info_name, -1)
 
         if button == need_to_press then
-            ply.pressed_button = true
-            if SP then ply:SendLua("LocalPlayer().pressed_button = true") end
-
             if typee == "hold" then
                 ply:SetNW2Var(network_name, true)
                 if notify:GetBool() then ply:ChatPrint("[Leaning] Enabled "..pretty_name) end
@@ -305,8 +304,8 @@ end
 local function lean_bones(ply, roll)
     if CLIENT then ply:SetupBones() end
 
-    if not ply.pressed_button then
-        return 
+    if halt_leaning then
+        return
     end
 
     for _, bone_name in ipairs({"ValveBiped.Bip01_Spine", "ValveBiped.Bip01_Spine1", "ValveBiped.Bip01_Head1"}) do
@@ -530,3 +529,11 @@ if CLIENT then
         end
     end)
 end
+
+hook.Add("ShutDown", "leaning_sourceengineweloveit", function() 
+    halt_leaning = true
+end)
+
+hook.Add("InitPostEntity", "leaning_sourceengineweloveit", function() 
+    halt_leaning = false
+end)
